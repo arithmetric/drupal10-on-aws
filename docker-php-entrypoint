@@ -1,0 +1,29 @@
+#!/bin/sh
+set -e
+
+# set up
+MYSQL_CREDS_FILE="/var/www/.mysql-creds"
+
+aws secretsmanager get-secret-value --secret-id drupal10AuroraClusterCredentials --query SecretString --output text > $MYSQL_CREDS_FILE
+
+MYSQL_USERNAME=$(jq -r .username $MYSQL_CREDS_FILE)
+MYSQL_PASSWORD=$(jq -r .password $MYSQL_CREDS_FILE)
+MYSQL_HOST=$(jq -r .host $MYSQL_CREDS_FILE)
+
+echo "\$databases['default']['default']['driver'] = 'mysql';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['database'] = '$MYSQL_USERNAME';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['username'] = '$MYSQL_USERNAME';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['password'] = '$MYSQL_PASSWORD';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['host'] = '$MYSQL_HOST';" >> /var/www/html/sites/default/settings.php
+echo "\$settings['hash_salt'] = 'random string';" >> /var/www/html/sites/default/settings.php
+echo "\$settings['config_sync_directory'] = 'sites/default/files/sync';" >> /var/www/html/sites/default/settings.php
+
+cat /var/www/html/sites/default/settings.php
+
+
+# first arg is `-f` or `--some-option`
+if [ "${1#-}" != "$1" ]; then
+	set -- apache2-foreground "$@"
+fi
+
+exec "$@"
