@@ -16,11 +16,11 @@ RUN apt-get update && \
 	docker-php-ext-install -j$(nproc) gd opcache pdo_mysql xml && \
     a2enmod rewrite
 
-COPY docroot/ /var/www/
-
 COPY docker-php-entrypoint /usr/local/bin/
 
+RUN chmod 755 /usr/local/bin/docker-php-entrypoint
+
+COPY docroot/ /var/www/
+
 RUN rm -rf /var/www/html && \
-    ln -s /var/www/web /var/www/html && \
-    chmod -R 777 /var/www/html/sites/default/files && \
-    chmod 666 /var/www/html/sites/default/settings.php
+    ln -s /var/www/web /var/www/html

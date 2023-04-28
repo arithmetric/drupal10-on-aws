@@ -20,6 +20,20 @@ echo "\$settings['config_sync_directory'] = 'sites/default/files/sync';" >> /var
 
 cat /var/www/html/sites/default/settings.php
 
+ls -la /mnt/efs
+touch /mnt/efs/boot
+ls -la /mnt/efs
+
+ls -la /var/www/html/sites/default
+mkdir -p /mnt/efs/files
+rm -rf /var/www/html/sites/default/files
+ln -s /mnt/efs/files /var/www/html/sites/default/files
+ls -la /var/www/html/sites/default
+
+chmod -R 777 /var/www/html/sites/default/files
+
+chmod 666 /var/www/html/sites/default/settings.php
+
 
 # first arg is `-f` or `--some-option`
 if [ "${1#-}" != "$1" ]; then

@@ -1,6 +1,7 @@
 const { Stack, Duration } = require('aws-cdk-lib');
 const ec2 = require("aws-cdk-lib/aws-ec2");
 const ecs = require("aws-cdk-lib/aws-ecs");
+const { FileSystem } = require("aws-cdk-lib/aws-efs");
 const { ApplicationLoadBalancedFargateService } = require("aws-cdk-lib/aws-ecs-patterns");
 const { Aurora } = require("./rds-aurora");
 const { ManagedPolicy, Policy, PolicyStatement } = require("aws-cdk-lib/aws-iam");
@@ -27,6 +28,11 @@ class Drupal10Stack extends Stack {
       vpc: vpc
     });
 
+    // Create an EFS filesystem
+    const efs = new FileSystem(this, "Drupal10-EFS-Drupal-Files", {
+      vpc: vpc,
+    });
+
     // Create a load-balanced Fargate service and make it public
     const fargate = new ApplicationLoadBalancedFargateService(this, "Drupal10-ECS-FargateALB", {
       cluster: cluster, // Required
@@ -37,7 +43,20 @@ class Drupal10Stack extends Stack {
       publicLoadBalancer: true, // Default is true
       healthCheckGracePeriod: Duration.minutes(10), // Default is 60 seconds
     });
-    fargate.taskDefinition.executionRole.addManagedPolicy((ManagedPolicy.fromAwsManagedPolicyName('AmazonEC2ContainerRegistryPowerUser')));
+    fargate.taskDefinition.executionRole.addManagedPolicy(ManagedPolicy.fromAwsManagedPolicyName('AmazonEC2ContainerRegistryPowerUser'));
+    fargate.taskDefinition.addVolume({
+      name: "drupalfiles",
+      efsVolumeConfiguration: {
+        fileSystemId: efs.fileSystemId,
+      },
+    });
+    fargate.taskDefinition.defaultContainer.addMountPoints({
+      sourceVolume: "drupalfiles",
+      containerPath: "/mnt/efs",
+      readOnly: false,
+    });
+
+    efs.connections.allowDefaultPortFrom(fargate.service.connections);
 
     // Create an RDS Aurora instance
     const rds = new Aurora(this, 'Drupal10-RDS-Aurora', {
