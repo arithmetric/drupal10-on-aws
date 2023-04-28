@@ -1,0 +1,2 @@
+; Increase memory limit to 512 MB
+memory_limit=512M
