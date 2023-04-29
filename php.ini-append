@@ -1,2 +1,8 @@
 ; Increase memory limit to 512 MB
 memory_limit=512M
+
+; Enable APCu PECL extension
+extension=apcu.so
+
+; Enable Upload Progress PECL extension
+extension=uploadprogress.so

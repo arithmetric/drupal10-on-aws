@@ -1,43 +1,39 @@
 #!/bin/sh
 set -e
 
-# set up
-MYSQL_CREDS_FILE="/var/www/.mysql-creds"
+# Fetch the database credentials
+DB_CREDS_FILE="/var/www/.db-creds"
 
-aws secretsmanager get-secret-value --secret-id drupal10AuroraClusterCredentials --query SecretString --output text > $MYSQL_CREDS_FILE
+aws secretsmanager get-secret-value \
+	--secret-id $DB_CREDS_SECRET_ID \
+	--query SecretString \
+	--output text \
+	> $DB_CREDS_FILE
 
-MYSQL_USERNAME=$(jq -r .username $MYSQL_CREDS_FILE)
-MYSQL_PASSWORD=$(jq -r .password $MYSQL_CREDS_FILE)
-MYSQL_HOST=$(jq -r .host $MYSQL_CREDS_FILE)
+DB_USERNAME=$(jq -r .username $DB_CREDS_FILE)
+DB_PASSWORD=$(jq -r .password $DB_CREDS_FILE)
+DB_HOST=$(jq -r .host $DB_CREDS_FILE)
 
+# Generate a hash salt file if needed
+[ ! -f /mnt/efs/hash_salt ] && (php -r "print substr(base64_encode(random_bytes(1024)), 0, 64);" > /mnt/efs/hash_salt)
+
+# Append configuration to the settings.php file
 echo "\$databases['default']['default']['driver'] = 'mysql';" >> /var/www/html/sites/default/settings.php
-echo "\$databases['default']['default']['database'] = '$MYSQL_USERNAME';" >> /var/www/html/sites/default/settings.php
-echo "\$databases['default']['default']['username'] = '$MYSQL_USERNAME';" >> /var/www/html/sites/default/settings.php
-echo "\$databases['default']['default']['password'] = '$MYSQL_PASSWORD';" >> /var/www/html/sites/default/settings.php
-echo "\$databases['default']['default']['host'] = '$MYSQL_HOST';" >> /var/www/html/sites/default/settings.php
-echo "\$settings['hash_salt'] = 'random string';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['database'] = '$DB_USERNAME';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['username'] = '$DB_USERNAME';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['password'] = '$DB_PASSWORD';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['host'] = '$DB_HOST';" >> /var/www/html/sites/default/settings.php
+echo "\$settings['hash_salt'] = file_get_contents('/mnt/efs/hash_salt');" >> /var/www/html/sites/default/settings.php
 echo "\$settings['config_sync_directory'] = 'sites/default/files/sync';" >> /var/www/html/sites/default/settings.php
 
-cat /var/www/html/sites/default/settings.php
-
-ls -la /mnt/efs
-touch /mnt/efs/boot
-ls -la /mnt/efs
-
-ls -la /var/www/html/sites/default
+# Replace the Drupal files directory with a link to the EFS filesystem
 mkdir -p /mnt/efs/files
 rm -rf /var/www/html/sites/default/files
 ln -s /mnt/efs/files /var/www/html/sites/default/files
-ls -la /var/www/html/sites/default
-
 chmod -R 777 /var/www/html/sites/default/files
 
-chmod 666 /var/www/html/sites/default/settings.php
-
-
-# first arg is `-f` or `--some-option`
+# Start Apache unless another command is given
 if [ "${1#-}" != "$1" ]; then
 	set -- apache2-foreground "$@"
 fi
-
 exec "$@"

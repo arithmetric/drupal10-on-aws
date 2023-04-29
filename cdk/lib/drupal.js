@@ -1,12 +1,13 @@
 const { Stack, Duration } = require('aws-cdk-lib');
-const ec2 = require("aws-cdk-lib/aws-ec2");
-const ecs = require("aws-cdk-lib/aws-ecs");
-const { FileSystem } = require("aws-cdk-lib/aws-efs");
+const { SubnetType, Vpc } = require("aws-cdk-lib/aws-ec2");
+const { Cluster, ContainerImage } = require("aws-cdk-lib/aws-ecs");
 const { ApplicationLoadBalancedFargateService } = require("aws-cdk-lib/aws-ecs-patterns");
-const { Aurora } = require("./rds-aurora");
+const { FileSystem } = require("aws-cdk-lib/aws-efs");
 const { ManagedPolicy, Policy, PolicyStatement } = require("aws-cdk-lib/aws-iam");
 
-class Drupal10Stack extends Stack {
+const { Aurora } = require("./rds-aurora");
+
+class DrupalStack extends Stack {
   /**
    *
    * @param {Construct} scope
@@ -18,13 +19,13 @@ class Drupal10Stack extends Stack {
 
     // The code that defines your stack goes here
 
-    const vpc = new ec2.Vpc(this, "Drupal10-VPC", {
+    const vpc = new Vpc(this, "Drupal10-VPC", {
       maxAzs: 3 // Default is all AZs in region
     });
 
-    const privateSubnets = vpc.selectSubnets({subnetType: ec2.SubnetType.PRIVATE});
+    const privateSubnets = vpc.selectSubnets({subnetType: SubnetType.PRIVATE});
 
-    const cluster = new ecs.Cluster(this, "Drupal10-ECS-Cluster", {
+    const cluster = new Cluster(this, "Drupal10-ECS-Cluster", {
       vpc: vpc
     });
 
@@ -38,7 +39,7 @@ class Drupal10Stack extends Stack {
       cluster: cluster, // Required
       cpu: 512, // Default is 256
       desiredCount: 1, // Default is 1
-      taskImageOptions: { image: ecs.ContainerImage.fromRegistry("748890162047.dkr.ecr.us-east-2.amazonaws.com/drupal10-test") },
+      taskImageOptions: { image: ContainerImage.fromRegistry("748890162047.dkr.ecr.us-east-2.amazonaws.com/drupal10-test") },
       memoryLimitMiB: 2048, // Default is 512
       publicLoadBalancer: true, // Default is true
       healthCheckGracePeriod: Duration.minutes(10), // Default is 60 seconds
@@ -78,8 +79,14 @@ class Drupal10Stack extends Stack {
         })
       ],
     }));
-    
+
+    // Provide the RDS Aurora credentials secret name to the Fargate containers
+    fargate.taskDefinition.defaultContainer.addEnvironment(
+      'DB_CREDS_SECRET_ID',
+      rds.ClusterSecret.secretName,
+    );
+
   }
 }
 
-module.exports = { Drupal10Stack }
+module.exports = { DrupalStack };

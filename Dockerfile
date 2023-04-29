@@ -6,6 +6,7 @@ RUN apt-get update && \
 		    libfreetype6-dev \
 		    libjpeg62-turbo-dev \
 		    libpng-dev \
+            libwebp-dev \
             libxml2-dev \
             mariadb-client \
             unzip \
@@ -13,8 +14,10 @@ RUN apt-get update && \
     curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" && \
     unzip awscliv2.zip && \
     ./aws/install && \
-	docker-php-ext-configure gd --with-freetype --with-jpeg && \
+	docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp && \
 	docker-php-ext-install -j$(nproc) gd opcache pdo_mysql xml && \
+    pecl install apcu && \
+    pecl install uploadprogress && \
     a2enmod rewrite
 
 COPY php.ini-append /usr/local/etc/php
