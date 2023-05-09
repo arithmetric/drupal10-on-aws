@@ -1,0 +1,14 @@
+{
+  "namePrefix": "",
+
+  "dbInstanceType": "t4g.medium",
+  "dbEngine": "mysql",
+  "dbName": "drupal",
+  "dbUsername": "sqladmin",
+
+  "ecrRepositoryTag": "latest",
+
+  "fargateCpu": 256,
+  "fargateInstances": 1,
+  "fargateMemoryLimit": 1024
+}

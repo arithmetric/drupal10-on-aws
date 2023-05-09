@@ -8,12 +8,10 @@ fi
 
 NAME_PREFIX=$(jq -r .namePrefix $(dirname $0)/../stack.config.json)
 
-DOCKER_URL=$(jq -r '."'$NAME_PREFIX'Base".OutputEcrImageUrl' $OUTPUTS_FILE)
-DOCKER_IMAGE=$(basename $DOCKER_URL)
+WEB_BASE_URL=$(jq -r '."'$NAME_PREFIX'Web".OutputWebUrl' $OUTPUTS_FILE)
 
-echo "Building Docker Image"
+echo "Cluster URLs:"
 echo ""
-echo "  Image: $DOCKER_IMAGE"
-echo ""
-
-docker build . -t "$DOCKER_IMAGE"
+echo "  Homepage: $WEB_BASE_URL"
+echo "  Login: $WEB_BASE_URL/user/login"
+echo "  Admin: $WEB_BASE_URL/admin"

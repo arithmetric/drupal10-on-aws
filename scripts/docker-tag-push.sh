@@ -1,8 +1,25 @@
 #!/bin/bash
 
-(grep -q "748890162047.dkr.ecr.us-east-2.amazonaws.com" ~/.docker/config.json) || (aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 748890162047.dkr.ecr.us-east-2.amazonaws.com)
+OUTPUTS_FILE="$(dirname $0)/../cdk/outputs.json"
+if [ ! -f $OUTPUTS_FILE ]; then
+  echo "CDK outputs file does not exist. Run 'cdk deploy' to generate it."
+  exit 1
+fi
 
-docker tag drupal10-web 748890162047.dkr.ecr.us-east-2.amazonaws.com/drupal10-test
+NAME_PREFIX=$(jq -r .namePrefix $(dirname $0)/../stack.config.json)
 
-docker push 748890162047.dkr.ecr.us-east-2.amazonaws.com/drupal10-test
+DOCKER_URL=$(jq -r '."'$NAME_PREFIX'Base".OutputEcrImageUrl' $OUTPUTS_FILE)
+DOCKER_HOST=$(dirname $DOCKER_URL)
+DOCKER_IMAGE=$(basename $DOCKER_URL)
 
+(grep -q $DOCKER_HOST ~/.docker/config.json) || $(dirname $0)/docker-login.sh
+
+echo "Pushing Docker Image to ECR"
+echo ""
+echo "  Local Image: $DOCKER_IMAGE"
+echo "  ECR Image: $DOCKER_URL"
+echo ""
+
+docker tag $DOCKER_IMAGE $DOCKER_URL
+
+docker push $DOCKER_URL

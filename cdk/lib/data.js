@@ -1,38 +1,38 @@
 // Adapted from AWS CDK Examples for RDS Aurora using TypeScript
 // https://github.com/aws-samples/aws-cdk-examples/blob/master/typescript/rds/aurora/aurora.ts
 
-const {
+import {
   CfnOutput,
   Tags,
   Fn,
   Duration,
   RemovalPolicy,
-} = require("aws-cdk-lib");
-const { Construct } = require("constructs");
-const cloudwatch = require("aws-cdk-lib/aws-cloudwatch");
-const ec2 = require("aws-cdk-lib/aws-ec2");
-const kms = require("aws-cdk-lib/aws-kms");
-const logs = require("aws-cdk-lib/aws-logs");
-const rds = require("aws-cdk-lib/aws-rds");
-const secretsmanager = require("aws-cdk-lib/aws-secretsmanager");
+  Stack,
+} from 'aws-cdk-lib';
+import { Dashboard, GraphWidget } from 'aws-cdk-lib/aws-cloudwatch';
+import ec2 from 'aws-cdk-lib/aws-ec2';
+import { FileSystem } from 'aws-cdk-lib/aws-efs';
+import { Key } from 'aws-cdk-lib/aws-kms';
+import { RetentionDays } from 'aws-cdk-lib/aws-logs';
+import rds from 'aws-cdk-lib/aws-rds';
+import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 
-class Aurora extends Construct {
+export class DataStack extends Stack {
 
   constructor(scope, id, props) {
-    super(scope, id);
+    super(scope, id, props);
 
-    let subnetIds = props.subnetIds;
-    let instanceType = props.instanceType;
-    let replicaInstances = props.replicaInstances ?? 1;
-    let backupRetentionDays = props.backupRetentionDays ?? 14;
+    let instanceType = props.dbInstanceType;
+    let replicaInstances = props.dbReplicaInstances ?? 1;
+    let backupRetentionDays = props.dbBackupRetentionDays ?? 14;
 
     var ingressSources = [];
-    if (typeof props.ingressSources !== 'undefined') {
-      ingressSources = props.ingressSources;
+    if (typeof props.dbIngressSources !== 'undefined') {
+      ingressSources = props.dbIngressSources;
     }
 
     const dbs = ['mysql', 'postgresql'];
-    if (!dbs.includes(props.engine)) {
+    if (!dbs.includes(props.dbEngine)) {
       throw new Error('Unknown Engine Please Use mysql or postgresql');
       process.exit(1);
     }
@@ -47,14 +47,14 @@ class Aurora extends Construct {
 
     // vpc
     const vpc = ec2.Vpc.fromVpcAttributes(this, 'ExistingVPC', {
-      vpcId: props.vpcId,
+      vpcId: props.baseStack.vpc.vpcId,
       availabilityZones: azs,
     });
 
     // Subnets
     const subnets = [];
-
-    for (let subnetId of subnetIds) {
+    const privateSubnets = props.baseStack.vpc.selectSubnets({subnetType: ec2.SubnetType.PRIVATE});
+    for (let subnetId of privateSubnets.subnetIds) {
       const subid = subnetId
         .replace('-', '')
         .replace('_', '')
@@ -81,7 +81,7 @@ class Aurora extends Construct {
     let connectionName;
 
     // Database Security Group
-    const dbsg = new ec2.SecurityGroup(this, 'DatabaseSecurityGroup', {
+    const dbsg = new ec2.SecurityGroup(this, `${props.namePrefix}Data-SecurityGroupDB`, {
       vpc: vpc,
       allowAllOutbound: true,
       description: id + 'Database',
@@ -90,7 +90,7 @@ class Aurora extends Construct {
     dbsg.addIngressRule(dbsg, allAll, 'all from self');
     dbsg.addEgressRule(ec2.Peer.ipv4('0.0.0.0/0'), allAll, 'all out');
 
-    if (props.engine == 'mysql') {
+    if (props.dbEngine == 'mysql') {
       connectionPort = tcp3306;
       connectionName = 'tcp3306 MySQL';
     } else {
@@ -100,7 +100,7 @@ class Aurora extends Construct {
 
     for (let ingress_source of ingressSources) {
       dbsg.addIngressRule(ingress_source, connectionPort, connectionName);
-      if (props.engine == 'postgresql') {
+      if (props.dbEngine == 'postgresql') {
         dbsg.addIngressRule(ingress_source, tcp1433, 'tcp1433');
       }
     }
@@ -110,7 +110,7 @@ class Aurora extends Construct {
       version: rds.AuroraPostgresEngineVersion.VER_13_4,
     });
 
-    if (props.engine == 'mysql') {
+    if (props.dbEngine == 'mysql') {
       auroraEngine = rds.DatabaseClusterEngine.auroraMysql({
         version: rds.AuroraMysqlEngineVersion.VER_3_02_2,
       });
@@ -118,14 +118,14 @@ class Aurora extends Construct {
 
     let auroraParameters = {};
     // If PostgreSQL, enable Babelfish
-    if (props.enableBabelfish && props.engine == 'postgresql') {
+    if (props.dbEnableBabelfish && props.dbEngine == 'postgresql') {
       auroraParameters['rds.babelfish_status'] = 'on';
     }
 
     // aurora params
     const auroraParameterGroup = new rds.ParameterGroup(
       this,
-      'AuroraParameterGroup',
+      `${props.namePrefix}Data-AuroraParameterGroup`,
       {
           engine: auroraEngine,
           description: id + ' Parameter Group',
@@ -133,17 +133,17 @@ class Aurora extends Construct {
       },
     );
 
-    this.ClusterSecret = new secretsmanager.Secret(
+    this.ClusterSecret = new Secret(
       this,
-      'AuroraClusterCredentials',
+      `${props.namePrefix}Data-SecretAuroraCredentials`,
       {
-        secretName: props.dbName + 'AuroraClusterCredentials',
-        description: props.dbName + 'AuroraClusterCrendetials',
+        secretName: `${props.dbName}-AuroraClusterCredentials`,
+        description: `Credentials for the ${props.dbName} Aurora database cluster`,
         generateSecretString: {
           excludeCharacters: "\"@/\\ '",
           generateStringKey: 'password',
           passwordLength: 30,
-          secretStringTemplate: `{"username":"${props.auroraClusterUsername}"}`,
+          secretStringTemplate: `{"username": "${props.dbUsername}"}`,
         },
       },
     );
@@ -151,7 +151,7 @@ class Aurora extends Construct {
     // aurora credentials
     const auroraClusterCrendentials = rds.Credentials.fromSecret(
       this.ClusterSecret,
-      props.auroraClusterUsername,
+      props.dbUsername,
     );
 
     if (instanceType == null || instanceType == undefined) {
@@ -162,21 +162,21 @@ class Aurora extends Construct {
     }
 
     // Aurora DB Key
-    const kmsKey = new kms.Key(this, 'AuroraDatabaseKey', {
+    const kmsKey = new Key(this, `${props.namePrefix}Data-KmsKey`, {
       enableKeyRotation: true,
       alias: props.dbName,
     });
 
     let cloudwatchLogsExports = ['postgresql'];
-    if (props.engine == 'mysql') {
+    if (props.dbEngine == 'mysql') {
       cloudwatchLogsExports = ['slowquery'];
     }
 
-    const aurora_cluster = new rds.DatabaseCluster(this, 'AuroraDatabase', {
+    const aurora_cluster = new rds.DatabaseCluster(this, `${props.namePrefix}Data-AuroraCluster`, {
       engine: auroraEngine,
       credentials: auroraClusterCrendentials,
       backup: {
-        preferredWindow: props.backupWindow,
+        preferredWindow: props.dbBackupWindow,
         retention: Duration.days(backupRetentionDays),
       },
       parameterGroup: auroraParameterGroup,
@@ -184,20 +184,21 @@ class Aurora extends Construct {
       iamAuthentication: true,
       storageEncrypted: true,
       storageEncryptionKey: kmsKey,
-      deletionProtection: true,
+      deletionProtection: false,
       removalPolicy: RemovalPolicy.SNAPSHOT,
       copyTagsToSnapshot: true,
       cloudwatchLogsExports: cloudwatchLogsExports,
-      cloudwatchLogsRetention: logs.RetentionDays.ONE_MONTH,
-      preferredMaintenanceWindow: props.preferredMaintenanceWindow,
+      cloudwatchLogsRetention: RetentionDays.ONE_MONTH,
+      preferredMaintenanceWindow: props.dbPreferredMaintenanceWindow,
       instanceIdentifierBase: props.dbName,
       instanceProps: {
-        instanceType: props.instanceType,
+        instanceType: props.dbInstanceType,
         vpcSubnets: vpcSubnets,
         vpc: vpc,
         securityGroups: [dbsg],
       },
     });
+    this.Cluster = aurora_cluster;
 
     aurora_cluster.applyRemovalPolicy(RemovalPolicy.RETAIN);
 
@@ -211,11 +212,16 @@ class Aurora extends Construct {
       vpcSubnets: vpcSubnets,
     });
 
+    // Create an EFS filesystem
+    this.EfsDrupalFiles = new FileSystem(this, `${props.namePrefix}Data-Efs`, {
+      vpc: props.baseStack.vpc,
+    });
+
     /*
     * CloudWatch Dashboard
     */
 
-    const dashboard = new cloudwatch.Dashboard(this, 'AuroraMonitoringDashboard', {
+    const dashboard = new Dashboard(this, `${props.namePrefix}Data-CloudwatchDashboard`, {
       dashboardName: props.dbName,
     });
 
@@ -240,19 +246,19 @@ class Aurora extends Construct {
       period: Duration.seconds(60),
     });
 
-    const widgetDbConnections = new cloudwatch.GraphWidget({
+    const widgetDbConnections = new GraphWidget({
       title: 'DB Connections',
       // Metrics to display on left Y axis.
       left: [dbConnections],
     });
 
-    const widgetCpuUtilizaton = new cloudwatch.GraphWidget({
+    const widgetCpuUtilizaton = new GraphWidget({
       title: 'CPU Utilization',
       // Metrics to display on left Y axis
       left: [cpuUtilization],
     });
 
-    const widgetReadLatency = new cloudwatch.GraphWidget({
+    const widgetReadLatency = new GraphWidget({
       title: 'Read Latency',
       //  Metrics to display on left Y axis.
       left: [readLatency],
@@ -269,37 +275,37 @@ class Aurora extends Construct {
     volumeReadIoPs = aurora_cluster.metricVolumeReadIOPs();
     volumeWriteIoPs = aurora_cluster.metricVolumeWriteIOPs();
 
-    const widgetDeadlocks = new cloudwatch.GraphWidget({
+    const widgetDeadlocks = new GraphWidget({
       title: 'Deadlocks',
       left: [deadlocks],
     });
 
-    const widgetFreeLocalStorage = new cloudwatch.GraphWidget({
+    const widgetFreeLocalStorage = new GraphWidget({
       title: 'Free Local Storage',
       left: [freeLocalStorage],
     });
 
-    const widgetFreeableMemory = new cloudwatch.GraphWidget({
+    const widgetFreeableMemory = new GraphWidget({
       title: 'Freeable Memory',
       left: [freeableMemory],
     });
 
-    const widget_network_receive_throughput = new cloudwatch.GraphWidget({
+    const widget_network_receive_throughput = new GraphWidget({
       title: 'Network Throuput',
       left: [networkRecieveThroughput, networkThroughput, networkTransmitThroughput],
     });
 
-    const widgetTotalBackupStorageBilled = new cloudwatch.GraphWidget({
+    const widgetTotalBackupStorageBilled = new GraphWidget({
       title: 'Backup Storage Billed',
       left: [totalBackupStorageBilled],
     });
 
-    const widgetVolumeBytes = new cloudwatch.GraphWidget({
+    const widgetVolumeBytes = new GraphWidget({
       title: 'Storage',
       left: [volumeBytesUsed, snapshotStorageUsed],
     });
 
-    const widgetVolumeIops = new cloudwatch.GraphWidget({
+    const widgetVolumeIops = new GraphWidget({
       title: 'Volume IOPs',
       left: [volumeReadIoPs, volumeWriteIoPs],
     });
@@ -388,8 +394,5 @@ class Aurora extends Construct {
       value: aurora_cluster.engine.parameterGroupFamily,
     });
 
+  }
 }
-
-}
-
-module.exports = { Aurora };
