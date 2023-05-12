@@ -3,7 +3,7 @@
 import cdk from 'aws-cdk-lib';
 import fs from 'fs';
 
-import { BaseStack, DataStack, WebStack } from '../lib/index.js';
+import { BaseStack, DataStack, EmailStack, WebStack } from '../lib/index.js';
 
 /* If you don't specify 'env', this stack will be environment-agnostic.
  * Account/Region-dependent features and context lookups will not work,
@@ -26,5 +26,9 @@ const globalProps = JSON.parse(fs.readFileSync('../stack.config.json'));
 globalProps.baseStack = new BaseStack(app, `${globalProps.namePrefix}Base`, globalProps);
 
 globalProps.dataStack = new DataStack(app, `${globalProps.namePrefix}Data`, globalProps);
+
+if (globalProps.sesEmailEnabled) {
+  globalProps.emailStack = new EmailStack(app, `${globalProps.namePrefix}Email`, globalProps);
+}
 
 globalProps.webStack = new WebStack(app, `${globalProps.namePrefix}Web`, globalProps);

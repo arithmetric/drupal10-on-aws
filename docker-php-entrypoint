@@ -14,17 +14,41 @@ DB_USERNAME=$(jq -r .username $DB_CREDS_FILE)
 DB_PASSWORD=$(jq -r .password $DB_CREDS_FILE)
 DB_HOST=$(jq -r .host $DB_CREDS_FILE)
 
-# Generate a hash salt file if needed
-[ ! -f /mnt/efs/hash_salt ] && (php -r "print substr(base64_encode(random_bytes(1024)), 0, 64);" > /mnt/efs/hash_salt)
-
 # Append configuration to the settings.php file
 echo "\$databases['default']['default']['driver'] = 'mysql';" >> /var/www/html/sites/default/settings.php
 echo "\$databases['default']['default']['database'] = '$DB_USERNAME';" >> /var/www/html/sites/default/settings.php
 echo "\$databases['default']['default']['username'] = '$DB_USERNAME';" >> /var/www/html/sites/default/settings.php
 echo "\$databases['default']['default']['password'] = '$DB_PASSWORD';" >> /var/www/html/sites/default/settings.php
 echo "\$databases['default']['default']['host'] = '$DB_HOST';" >> /var/www/html/sites/default/settings.php
+
+# Generate a hash salt file if needed
+[ ! -f /mnt/efs/hash_salt ] && (php -r "print substr(base64_encode(random_bytes(1024)), 0, 64);" > /mnt/efs/hash_salt)
+
+# Add hash salt and config sync settings
 echo "\$settings['hash_salt'] = file_get_contents('/mnt/efs/hash_salt');" >> /var/www/html/sites/default/settings.php
 echo "\$settings['config_sync_directory'] = 'sites/default/files/sync';" >> /var/www/html/sites/default/settings.php
+
+# echo "\$settings['trusted_host_patterns'] = '';" >> /var/www/html/sites/default/settings.php
+
+# Add SES credentials for outbound email, if enabled
+if [ ! -z "$SES_CREDS_SECRET_ID" ]; then
+	SES_CREDS_FILE="/var/www/.ses-creds"
+
+	aws secretsmanager get-secret-value \
+		--secret-id $SES_CREDS_SECRET_ID \
+		--query SecretString \
+		--output text \
+		> $SES_CREDS_FILE
+
+	SES_USERNAME=$(jq -r .username $SES_CREDS_FILE)
+	SES_PASSWORD=$(jq -r .password $SES_CREDS_FILE)
+
+	echo "\$config['symfony_mailer.mailer_transport.sendmail']['plugin'] = 'smtp';" >> /var/www/html/sites/default/settings.php
+	echo "\$config['symfony_mailer.mailer_transport.sendmail']['configuration']['user'] = '$SES_USERNAME';" >> /var/www/html/sites/default/settings.php
+	echo "\$config['symfony_mailer.mailer_transport.sendmail']['configuration']['pass'] = '$SES_PASSWORD';" >> /var/www/html/sites/default/settings.php
+	echo "\$config['symfony_mailer.mailer_transport.sendmail']['configuration']['host'] = 'email-smtp.$AWS_REGION.amazonaws.com';" >> /var/www/html/sites/default/settings.php
+	echo "\$config['symfony_mailer.mailer_transport.sendmail']['configuration']['port'] = '465';" >> /var/www/html/sites/default/settings.php
+fi
 
 # Replace the Drupal files directory with a link to the EFS filesystem
 mkdir -p /mnt/efs/files

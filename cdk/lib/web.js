@@ -63,6 +63,30 @@ export class WebStack extends Stack {
       props.dataStack.ClusterSecret.secretName,
     );
 
+    if (props.emailStack) {
+      // Allow Fargate to get the SES credentials secret value
+      fargate.taskDefinition.taskRole.attachInlinePolicy(new Policy(this, `${props.namePrefix}Web-PolicyGetSesCredentials`, {
+        statements: [
+          new PolicyStatement({
+            actions: ['secretsmanager:GetSecretValue'],
+            resources: [props.emailStack.SmtpCredentialsSecret.secretArn],
+          })
+        ],
+      }));
+
+      // Provide the SES credentials secret name to the Fargate containers
+      fargate.taskDefinition.defaultContainer.addEnvironment(
+        'SES_CREDS_SECRET_ID',
+        props.emailStack.SmtpCredentialsSecret.secretName,
+      );
+    }
+
+    // Provide the Drush default base URL
+    fargate.taskDefinition.defaultContainer.addEnvironment(
+      'DRUSH_OPTIONS_URI',
+      `http://${fargate.loadBalancer.loadBalancerDnsName}`,
+    );
+
     // Add outputs to support maintenance operations
     new CfnOutput(this, 'OutputWebUrl', {
       exportName: 'OutputWebUrl',

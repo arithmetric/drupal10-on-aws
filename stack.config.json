@@ -10,5 +10,7 @@
 
   "fargateCpu": 256,
   "fargateInstances": 1,
-  "fargateMemoryLimit": 1024
+  "fargateMemoryLimit": 1024,
+
+  "sesEmailEnabled": true
 }
