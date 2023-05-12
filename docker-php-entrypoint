@@ -10,13 +10,14 @@ aws secretsmanager get-secret-value \
 	--output text \
 	> $DB_CREDS_FILE
 
+DB_NAME=$(jq -r .dbName $DB_CREDS_FILE)
 DB_USERNAME=$(jq -r .username $DB_CREDS_FILE)
 DB_PASSWORD=$(jq -r .password $DB_CREDS_FILE)
 DB_HOST=$(jq -r .host $DB_CREDS_FILE)
 
 # Append configuration to the settings.php file
 echo "\$databases['default']['default']['driver'] = 'mysql';" >> /var/www/html/sites/default/settings.php
-echo "\$databases['default']['default']['database'] = '$DB_USERNAME';" >> /var/www/html/sites/default/settings.php
+echo "\$databases['default']['default']['database'] = '$DB_NAME';" >> /var/www/html/sites/default/settings.php
 echo "\$databases['default']['default']['username'] = '$DB_USERNAME';" >> /var/www/html/sites/default/settings.php
 echo "\$databases['default']['default']['password'] = '$DB_PASSWORD';" >> /var/www/html/sites/default/settings.php
 echo "\$databases['default']['default']['host'] = '$DB_HOST';" >> /var/www/html/sites/default/settings.php

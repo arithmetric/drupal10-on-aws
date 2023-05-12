@@ -50,8 +50,8 @@ aws ecs run-task \
 
 TASK_ARN=$(jq -r .tasks[0].taskArn .ecs--run-task.json)
 
-echo "  Task: $TASK_ARN"
 echo ""
+echo "Started task: $TASK_ARN"
 echo "Waiting for task to finish..."
 
 aws ecs wait tasks-stopped --tasks $TASK_ARN --cluster $CLUSTER_ARN
