@@ -87,6 +87,12 @@ export class WebStack extends Stack {
       `http://${fargate.loadBalancer.loadBalancerDnsName}`,
     );
 
+    // Provide load balancer host name for the trusted hosts setting
+    fargate.taskDefinition.defaultContainer.addEnvironment(
+      'DRUPAL_TRUSTED_HOSTS',
+      `^${fargate.loadBalancer.loadBalancerDnsName}$`,
+    );
+
     // Add outputs to support maintenance operations
     new CfnOutput(this, 'OutputWebUrl', {
       exportName: 'OutputWebUrl',

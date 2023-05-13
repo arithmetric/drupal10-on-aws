@@ -25,11 +25,13 @@ echo "\$databases['default']['default']['host'] = '$DB_HOST';" >> /var/www/html/
 # Generate a hash salt file if needed
 [ ! -f /mnt/efs/hash_salt ] && (php -r "print substr(base64_encode(random_bytes(1024)), 0, 64);" > /mnt/efs/hash_salt)
 
-# Add hash salt and config sync settings
+# ELB health checks send the container IP address as the Host header
+LOCAL_IP_ADDR=$(curl $ECS_CONTAINER_METADATA_URI | jq -r .Networks[0].IPv4Addresses[0])
+
+# Add hash salt, config sync, and trusted hosts settings
 echo "\$settings['hash_salt'] = file_get_contents('/mnt/efs/hash_salt');" >> /var/www/html/sites/default/settings.php
 echo "\$settings['config_sync_directory'] = 'sites/default/files/sync';" >> /var/www/html/sites/default/settings.php
-
-# echo "\$settings['trusted_host_patterns'] = '';" >> /var/www/html/sites/default/settings.php
+echo "\$settings['trusted_host_patterns'] = array_filter(explode(' ', '$DRUPAL_TRUSTED_HOSTS ^$LOCAL_IP_ADDR\$'));" >> /var/www/html/sites/default/settings.php
 
 # Add SES credentials for outbound email, if enabled
 if [ ! -z "$SES_CREDS_SECRET_ID" ]; then
