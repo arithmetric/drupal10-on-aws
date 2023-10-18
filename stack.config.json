@@ -8,9 +8,17 @@
 
   "ecrRepositoryTag": "latest",
 
+  "env": {
+    "region": "us-east-2"
+  },
+
   "fargateCpu": 256,
   "fargateInstances": 1,
   "fargateMemoryLimit": 1024,
+
+  "dnsDomain": "drupal.arithmetric.com",
+  "dnsDomainEnableRoot": true,
+  "dnsDomainHost": "www",
 
   "sesEmailEnabled": true
 }

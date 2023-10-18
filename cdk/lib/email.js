@@ -3,12 +3,13 @@ import { SesSmtpCredentials } from '@pepperize/cdk-ses-smtp-credentials';
 import { User } from 'aws-cdk-lib/aws-iam';
 
 export class EmailStack extends Stack {
-
   /**
+   * EmailStack creates a user, generates SES SMTP email sending credentials,
+   * and stores them in Secrets Manager.
    *
    * @param {Construct} scope
    * @param {string} id
-   * @param {StackProps=} props
+   * @param {StackProps} props
    */
   constructor(scope, id, props) {
     super(scope, id, props);

@@ -1,14 +1,22 @@
 import { CfnOutput, Duration, Stack } from 'aws-cdk-lib';
+import cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import { Cluster, ContainerImage } from 'aws-cdk-lib/aws-ecs';
 import { ApplicationLoadBalancedFargateService } from 'aws-cdk-lib/aws-ecs-patterns';
 import { ManagedPolicy, Policy, PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { ARecord, RecordTarget } from 'aws-cdk-lib/aws-route53';
+import { CloudFrontTarget } from 'aws-cdk-lib/aws-route53-targets';
+
+import { CertStack } from './cert.js';
 
 export class WebStack extends Stack {
   /**
+   * WebStack creates the Fargate/ALB service, sets up its connections with
+   * the Aurora database and EFS filesystem, and creates a CloudFront
+   * distribution.
    *
    * @param {Construct} scope
    * @param {string} id
-   * @param {StackProps=} props
+   * @param {StackProps} props
    */
   constructor(scope, id, props) {
     super(scope, id, props);
@@ -81,10 +89,80 @@ export class WebStack extends Stack {
       );
     }
 
+    const domains = [];
+    if (props.dnsDomainHost) {
+      domains.push(`${props.dnsDomainHost}.${props.dnsDomain}`);
+    }
+    if (props.dnsDomainEnableRoot) {
+      domains.push(props.dnsDomain);
+    }
+
+    const cert = new CertStack(this, `${props.namePrefix}Cert`, {
+      ...props,
+      // ACM Certificate must be created in us-east-1
+      crossRegionReferences: true,
+      env: {
+        region: 'us-east-1'
+      }
+    });
+
+    const cfSourceConfig = {
+      behaviors: [{
+        allowedMethods: cloudfront.CloudFrontAllowedMethods.ALL,
+        cachedMethods: cloudfront.CloudFrontAllowedCachedMethods.GET_HEAD_OPTIONS,
+        compress: true,
+        defaultTtl: Duration.days(30),
+        forwardedValues: {
+          queryString: true,
+          cookies: {
+            forward: 'all',
+          },
+        },
+        isDefaultBehavior: true,
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      }],
+      connectionTimeout: Duration.seconds(3),
+      customOriginSource: {
+        domainName: fargate.loadBalancer.loadBalancerDnsName,
+        allowedOriginSSLVersions: [cloudfront.OriginSslPolicy.SSL_V3],
+        originKeepaliveTimeout: Duration.seconds(30),
+        originProtocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+        originShieldRegion: props.cfOriginShieldRegion || this.region,
+      },
+    };
+    const cfDistro = new cloudfront.CloudFrontWebDistribution(this, `${props.namePrefix}Web-CloudfrontDistribution`, {
+      enableIpV6: true,
+      httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
+      originConfigs: [cfSourceConfig],
+      viewerCertificate: cloudfront.ViewerCertificate.fromAcmCertificate(
+        cert.domainCert,
+        {
+          aliases: domains,
+          sslMethod: cloudfront.SSLMethod.SNI,
+        },
+      ),
+    });
+
+    if (props.dnsDomainEnableRoot) {
+      new ARecord(this, `${props.namePrefix}Web-Route53RecordRoot`, {
+        zone: props.baseStack.dnsZone,
+        recordName: '',
+        target: RecordTarget.fromAlias(new CloudFrontTarget(cfDistro)),
+      });
+    }
+
+    if (props.dnsDomainHost) {
+      new ARecord(this, `${props.namePrefix}Web-Route53RecordHost`, {
+        zone: props.baseStack.dnsZone,
+        recordName: props.dnsDomainHost,
+        target: RecordTarget.fromAlias(new CloudFrontTarget(cfDistro)),
+      });
+    }
+
     // Provide the Drush default base URL
     fargate.taskDefinition.defaultContainer.addEnvironment(
       'DRUSH_OPTIONS_URI',
-      `http://${fargate.loadBalancer.loadBalancerDnsName}`,
+      `https://${props.dnsDomainHost}.${props.dnsDomain}`,
     );
 
     // Provide load balancer host name for the trusted hosts setting
@@ -96,7 +174,7 @@ export class WebStack extends Stack {
     // Add outputs to support maintenance operations
     new CfnOutput(this, 'OutputWebUrl', {
       exportName: 'OutputWebUrl',
-      value: `http://${fargate.loadBalancer.loadBalancerDnsName}`,
+      value: `https://${props.dnsDomainHost}.${props.dnsDomain}`,
     });
     new CfnOutput(this, 'OutputEcsClusterArn', {
       exportName: 'OutputEcsClusterArn',

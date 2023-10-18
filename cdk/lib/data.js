@@ -18,7 +18,13 @@ import rds from 'aws-cdk-lib/aws-rds';
 import { Secret } from 'aws-cdk-lib/aws-secretsmanager';
 
 export class DataStack extends Stack {
-
+  /**
+   * DataStack creates an RDS Aurora database and an EFS filesystem.
+   *
+   * @param {Construct} scope
+   * @param {string} id
+   * @param {StackProps} props
+   */
   constructor(scope, id, props) {
     super(scope, id, props);
 
@@ -122,7 +128,7 @@ export class DataStack extends Stack {
       auroraParameters['rds.babelfish_status'] = 'on';
     }
 
-    // aurora params
+    // Aurora params
     const auroraParameterGroup = new rds.ParameterGroup(
       this,
       `${props.namePrefix}Data-AuroraParameterGroup`,
@@ -148,7 +154,7 @@ export class DataStack extends Stack {
       },
     );
 
-    // aurora credentials
+    // Aurora credentials
     const auroraClusterCrendentials = rds.Credentials.fromSecret(
       this.ClusterSecret,
       props.dbUsername,
@@ -213,9 +219,9 @@ export class DataStack extends Stack {
       vpc: props.baseStack.vpc,
     });
 
-    /*
-    * CloudWatch Dashboard
-    */
+    /**
+     * CloudWatch Dashboard
+     */
 
     const dashboard = new Dashboard(this, `${props.namePrefix}Data-CloudwatchDashboard`, {
       dashboardName: `${props.namePrefix}Data-AuroraCluster`,
